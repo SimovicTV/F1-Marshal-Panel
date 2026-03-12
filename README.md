@@ -40,7 +40,8 @@ The result is a small F1 marshal panel simulator that integrates nicely into a s
 
 
 
-[quote="SavSim, post:1, topic:995226"]
+
 Many thanks to [Stimo Niklas](https://community.home-assistant.io/u/stimo/summary) for the [Formula 1 Racing Sensor](https://community.home-assistant.io/t/formula-1-racing-sensor/880842) .
-[/quote]
+
+
 
