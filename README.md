@@ -35,6 +35,11 @@ While watching races, I wanted a small panel that visually shows the current tra
 
 The result is a small F1 marshal panel simulator that integrates nicely into a smart-home setup.
 
+<img width="320" height="569" alt="20260312_224035-R" src="https://github.com/user-attachments/assets/2a693cd0-6a83-4f3f-bfac-1540c12338fa" /> <img width="320" height="569" alt="20260312_224054-R" src="https://github.com/user-attachments/assets/125c3ca3-8cb9-430c-bba0-233af149a25b" />
+
+
+
+
 [quote="SavSim, post:1, topic:995226"]
 Many thanks to [Stimo Niklas](https://community.home-assistant.io/u/stimo/summary) for the [Formula 1 Racing Sensor](https://community.home-assistant.io/t/formula-1-racing-sensor/880842) .
 [/quote]
