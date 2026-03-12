@@ -1,0 +1,430 @@
+esphome:
+  name: f1-panel
+  friendly_name: F1 Marshal Panel
+
+  on_boot:
+    priority: 600
+    then:
+      - light.turn_on:
+          id: f1_panel
+          effect: BOOT_ANIMATION
+
+esp8266:
+  board: esp01_1m
+
+logger:
+
+api:
+  encryption:
+    key: 
+
+ota:
+  - platform:
+    password: 
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  min_auth_mode: WPA2
+
+  ap:
+    ssid: "F1 Panel Fallback"
+    password: "12345678"
+
+captive_portal:
+
+################################################
+# GLOBALS
+################################################
+
+globals:
+  - id: test_status
+    type: std::string
+    restore_value: no
+    initial_value: '"NONE"'
+
+  - id: brightness_factor
+    type: float
+    restore_value: yes
+    initial_value: '0.7'
+
+  - id: ha_last_update
+    type: uint32_t
+    restore_value: no
+    initial_value: '0'
+
+################################################
+# BRIGHTNESS CONTROL
+################################################
+
+number:
+  - platform: template
+    name: "F1 Panel Brightness"
+    min_value: 10
+    max_value: 70
+    step: 1
+    unit_of_measurement: "%"
+    initial_value: 70
+    set_action:
+      - lambda: |-
+          id(brightness_factor) = x / 100.0;
+
+################################################
+# TRACK STATUS FROM HOME ASSISTANT
+################################################
+
+text_sensor:
+  - platform: homeassistant
+    id: track_status
+    entity_id: #Set the F1 Sensor track status entity here.#
+
+################################################
+# TEST BUTTONS
+################################################
+
+button:
+
+  - platform: template
+    name: "F1 Test CLEAR"
+    on_press:
+      - lambda: 'id(test_status)="CLEAR";'
+      - light.turn_on:
+          id: f1_panel
+          effect: F1_TRACK_STATUS
+
+  - platform: template
+    name: "F1 Test YELLOW"
+    on_press:
+      - lambda: 'id(test_status)="YELLOW";'
+      - light.turn_on:
+          id: f1_panel
+          effect: F1_TRACK_STATUS
+
+  - platform: template
+    name: "F1 Test RED"
+    on_press:
+      - lambda: 'id(test_status)="RED";'
+      - light.turn_on:
+          id: f1_panel
+          effect: F1_TRACK_STATUS
+
+  - platform: template
+    name: "F1 Test SC"
+    on_press:
+      - lambda: 'id(test_status)="SC";'
+      - light.turn_on:
+          id: f1_panel
+          effect: F1_TRACK_STATUS
+
+  - platform: template
+    name: "F1 Test VSC"
+    on_press:
+      - lambda: 'id(test_status)="VSC";'
+      - light.turn_on:
+          id: f1_panel
+          effect: F1_TRACK_STATUS
+
+  - platform: template
+    name: "F1 Test OFF"
+    on_press:
+      - lambda: 'id(test_status)="NONE";'
+      - light.turn_off: f1_panel
+
+################################################
+# LED PANEL
+################################################
+
+light:
+  - platform: neopixelbus
+    id: f1_panel
+    type: GRB
+    variant: ws2812x
+    pin: GPIO02
+    num_leds: 64
+    name: "F1 Panel"
+
+    restore_mode: ALWAYS_OFF
+    default_transition_length: 0s
+
+    effects:
+
+      ################################################
+      # BOOT ANIMATION
+      ################################################
+
+      - addressable_lambda:
+          name: BOOT_ANIMATION
+          update_interval: 40ms
+          lambda: |-
+
+            static int frame = 0;
+
+            float brightness = 0.7;
+
+            Color amber = Color(255*brightness,160*brightness,0);
+            Color white = Color(255*brightness,255*brightness,255*brightness);
+
+            it.all() = Color(0,0,0);
+
+            if(frame < 8){
+              for(int x=0;x<8;x++)
+                it[frame*8 + x] = amber;
+            }
+
+            else if(frame < 20){
+
+              bool S[5][3]={
+                {1,1,1},
+                {1,0,0},
+                {1,1,1},
+                {0,0,1},
+                {1,1,1}
+              };
+
+              bool C[5][3]={
+                {1,1,1},
+                {1,0,0},
+                {1,0,0},
+                {1,0,0},
+                {1,1,1}
+              };
+
+              for(int x=0;x<3;x++)
+                for(int y=0;y<5;y++)
+                  if(S[y][x])
+                    it[(y+1)*8+(x+1)] = white;
+
+              for(int x=0;x<3;x++)
+                for(int y=0;y<5;y++)
+                  if(C[y][x])
+                    it[(y+1)*8+(x+4)] = white;
+
+            }
+
+            else{
+              auto call = id(f1_panel).turn_off();
+              call.perform();
+              frame = 0;
+              return;
+            }
+
+            frame++;
+
+      ################################################
+      # MAIN TRACK STATUS EFFECT
+      ################################################
+
+      - addressable_lambda:
+          name: F1_TRACK_STATUS
+          update_interval: 40ms
+          lambda: |-
+
+            const int W = 8;
+
+            auto XY = [&](int x,int y){
+              return y*W + x;
+            };
+
+            static int frame = 0;
+            static uint32_t clear_start = 0;
+            static std::string last_status="NONE";
+            static std::string active_status="NONE";
+
+            float brightness = id(brightness_factor);
+
+            Color amber = Color(255*brightness,160*brightness,0);
+            Color red = Color(255*brightness,0,0);
+            Color green = Color(0,255*brightness,0);
+            Color white = Color(255*brightness,255*brightness,255*brightness);
+
+            std::string status;
+
+            if(id(test_status)!="NONE")
+              status=id(test_status);
+            else
+              status=id(track_status).state;
+
+            if(status!="unknown" && status!="unavailable"){
+              active_status=status;
+              id(ha_last_update)=millis();
+            }
+
+            status=active_status;
+
+            if(millis()-id(ha_last_update) > 30000){
+              it.all() = Color(0,0,0);
+              return;
+            }
+
+            it.all() = Color(0,0,0);
+
+            // CLEAR
+
+            if(status=="CLEAR"){
+
+              if(last_status!="CLEAR")
+                clear_start=millis();
+
+              if(millis()-clear_start > 10000)
+                return;
+
+              it.all()=green;
+
+              last_status="CLEAR";
+              return;
+            }
+
+            // YELLOW
+
+            if(status=="YELLOW"){
+
+              for(int x=0;x<8;x++)
+                for(int y=0;y<8;y++)
+                  if((x+y+frame)%4<2)
+                    it[XY(x,y)] = amber;
+
+              frame++;
+              last_status=status;
+              return;
+            }
+
+            // RED
+
+            if(status=="RED"){
+
+              if(frame%20<3 || (frame%20>6 && frame%20<9))
+                it.all() = red;
+
+              frame++;
+              last_status=status;
+              return;
+            }
+
+            // SC
+
+            if(status=="SC"){
+
+              int border[28][2]={
+                {0,0},{1,0},{2,0},{3,0},{4,0},{5,0},{6,0},{7,0},
+                {7,1},{7,2},{7,3},{7,4},{7,5},{7,6},
+                {7,7},{6,7},{5,7},{4,7},{3,7},{2,7},{1,7},{0,7},
+                {0,6},{0,5},{0,4},{0,3},{0,2},{0,1}
+              };
+
+              int head1 = frame % 28;
+              int head2 = (head1 + 14) % 28;
+
+              int length = 8;
+
+              for(int i=0;i<length;i++){
+
+                int idx1 = (head1 - i + 28) % 28;
+                int idx2 = (head2 - i + 28) % 28;
+
+                float fade = 1.0 - (i/(float)length);
+
+                Color c = Color(
+                  255 * brightness * fade,
+                  160 * brightness * fade,
+                  0
+                );
+
+                it[XY(border[idx1][0],border[idx1][1])] = c;
+                it[XY(border[idx2][0],border[idx2][1])] = c;
+              }
+
+              bool S[5][3]={
+                {1,1,1},
+                {1,0,0},
+                {1,1,1},
+                {0,0,1},
+                {1,1,1}
+              };
+
+              bool C[5][3]={
+                {1,1,1},
+                {1,0,0},
+                {1,0,0},
+                {1,0,0},
+                {1,1,1}
+              };
+
+              for(int x=0;x<3;x++)
+                for(int y=0;y<5;y++)
+                  if(S[y][x])
+                    it[XY(x+1,y+1)] = white;
+
+              for(int x=0;x<3;x++)
+                for(int y=0;y<5;y++)
+                  if(C[y][x])
+                    it[XY(x+4,y+1)] = white;
+
+              frame++;
+              last_status=status;
+              return;
+            }
+
+            // VSC
+
+            if(status=="VSC"){
+
+              bool show_v = (frame / 15) % 2;
+
+              for(int x=0;x<8;x++){
+                it[XY(x,0)] = amber;
+                it[XY(x,7)] = amber;
+              }
+
+              for(int y=0;y<8;y++){
+                it[XY(0,y)] = amber;
+                it[XY(7,y)] = amber;
+              }
+
+              if(show_v){
+
+                bool V[5][5]={
+                  {1,0,0,0,1},
+                  {1,0,0,0,1},
+                  {0,1,0,1,0},
+                  {0,1,0,1,0},
+                  {0,0,1,0,0}
+                };
+
+                for(int x=0;x<5;x++)
+                  for(int y=0;y<5;y++)
+                    if(V[y][x])
+                      it[XY(x+2,y+1)] = white;
+
+              } else {
+
+                bool S[5][3]={
+                  {1,1,1},
+                  {1,0,0},
+                  {1,1,1},
+                  {0,0,1},
+                  {1,1,1}
+                };
+
+                bool C[5][3]={
+                  {1,1,1},
+                  {1,0,0},
+                  {1,0,0},
+                  {1,0,0},
+                  {1,1,1}
+                };
+
+                for(int x=0;x<3;x++)
+                  for(int y=0;y<5;y++)
+                    if(S[y][x])
+                      it[XY(x+1,y+1)] = white;
+
+                for(int x=0;x<3;x++)
+                  for(int y=0;y<5;y++)
+                    if(C[y][x])
+                      it[XY(x+4,y+1)] = white;
+              }
+
+              frame++;
+              last_status=status;
+              return;
+            }
