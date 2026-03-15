@@ -16,7 +16,7 @@ logger:
 
 api:
   encryption:
-    key: # you API key 
+    key: # you api key
   reboot_timeout: 0s
 
 ota:
@@ -29,12 +29,13 @@ wifi:
   min_auth_mode: WPA2
 
   ap:
-    ssid: "F1 Panel Fallback"
-    password: "12345678"
+    ssid: "F1-Panel-2 Fallback Hotspot"
+    password: "JAP9jLwdxJBa"
 
 captive_portal:
 
 globals:
+
   - id: brightness_factor
     type: float
     restore_value: yes
@@ -60,7 +61,7 @@ number:
 text_sensor:
   - platform: homeassistant
     id: track_status
-    entity_id: sensor.f1_session_track_status
+    entity_id: # You track status sensor
 
     on_value:
       then:
@@ -125,11 +126,11 @@ button:
 light:
   - platform: neopixelbus
     id: f1_panel
-    name: "F1 Marshal Panel"
     type: GRB
     variant: ws2812x
     pin: GPIO02
     num_leds: 64
+    name: "F1 Panel"
 
     restore_mode: ALWAYS_OFF
     default_transition_length: 0s
@@ -169,7 +170,6 @@ light:
                 for(int y=0;y<5;y++)
                   if(C[y][x])
                     it[(y+1)*8+(x+4)] = white;
-
             }
 
             else{
@@ -183,7 +183,7 @@ light:
 
       - addressable_lambda:
           name: F1_TRACK_STATUS
-          update_interval: 40ms
+          update_interval: 30ms
           lambda: |-
 
             const int W = 8;
@@ -196,12 +196,12 @@ light:
             static uint32_t clear_start = 0;
             static std::string active_status="NONE";
 
-            float brightness = id(brightness_factor);
+            float b = id(brightness_factor);
 
-            Color amber = Color(255*brightness,160*brightness,0);
-            Color red = Color(255*brightness,0,0);
-            Color green = Color(0,255*brightness,0);
-            Color white = Color(255*brightness,255*brightness,255*brightness);
+            Color amber = Color(255*b,160*b,0);
+            Color red   = Color(255*b,0,0);
+            Color green = Color(0,255*b,0);
+            Color white = Color(255*b,255*b,255*b);
 
             std::string status = id(track_status).state;
 
@@ -220,6 +220,7 @@ light:
             it.all() = Color(0,0,0);
 
             if(status=="CLEAR"){
+
               if(clear_start==0)
                 clear_start=millis();
 
@@ -231,16 +232,21 @@ light:
             }
 
             if(status=="YELLOW"){
-              for(int x=0;x<8;x++)
-                for(int y=0;y<8;y++)
-                  if((x+y+frame)%4<2)
-                    it[XY(x,y)] = amber;
+
+              for(int i=0;i<64;i++){
+                int x=i%8;
+                int y=i/8;
+
+                if((x+y+frame)%4<2)
+                  it[i]=amber;
+              }
 
               frame++;
               return;
             }
 
             if(status=="RED"){
+
               if(frame%20<3 || (frame%20>6 && frame%20<9))
                 it.all() = red;
 
@@ -250,28 +256,23 @@ light:
 
             if(status=="SC"){
 
-              int border[28][2]={{0,0},{1,0},{2,0},{3,0},{4,0},{5,0},{6,0},{7,0},
-              {7,1},{7,2},{7,3},{7,4},{7,5},{7,6},
-              {7,7},{6,7},{5,7},{4,7},{3,7},{2,7},{1,7},{0,7},
-              {0,6},{0,5},{0,4},{0,3},{0,2},{0,1}};
+              int border[28][2]={
+                {0,0},{1,0},{2,0},{3,0},{4,0},{5,0},{6,0},{7,0},
+                {7,1},{7,2},{7,3},{7,4},{7,5},{7,6},
+                {7,7},{6,7},{5,7},{4,7},{3,7},{2,7},{1,7},{0,7},
+                {0,6},{0,5},{0,4},{0,3},{0,2},{0,1}
+              };
 
-              int head1 = frame % 28;
-              int head2 = (head1 + 14) % 28;
+              int head = frame % 28;
 
-              int length = 8;
+              for(int i=0;i<8;i++){
 
-              for(int i=0;i<length;i++){
+                int idx1 = (head - i + 28) % 28;
+                int idx2 = (head + 14 - i + 28) % 28;
 
-                int idx1 = (head1 - i + 28) % 28;
-                int idx2 = (head2 - i + 28) % 28;
+                float fade = 1.0 - (i/8.0);
 
-                float fade = 1.0 - (i/(float)length);
-
-                Color c = Color(
-                  255 * brightness * fade,
-                  160 * brightness * fade,
-                  0
-                );
+                Color c = Color(255*b*fade,160*b*fade,0);
 
                 it[XY(border[idx1][0],border[idx1][1])] = c;
                 it[XY(border[idx2][0],border[idx2][1])] = c;
@@ -310,7 +311,13 @@ light:
 
               if(show_v){
 
-                bool V[5][5]={{1,0,0,0,1},{1,0,0,0,1},{0,1,0,1,0},{0,1,0,1,0},{0,0,1,0,0}};
+                bool V[5][5]={
+                  {1,0,0,0,1},
+                  {1,0,0,0,1},
+                  {0,1,0,1,0},
+                  {0,1,0,1,0},
+                  {0,0,1,0,0}
+                };
 
                 for(int x=0;x<5;x++)
                   for(int y=0;y<5;y++)
