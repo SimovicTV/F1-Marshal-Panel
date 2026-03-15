@@ -16,11 +16,12 @@ logger:
 
 api:
   encryption:
-    key: 
+    key: # you API key 
+  reboot_timeout: 0s
 
 ota:
-  - platform:
-    password: 
+  - platform: esphome
+    password: # you pass
 
 wifi:
   ssid: !secret wifi_ssid
@@ -33,16 +34,7 @@ wifi:
 
 captive_portal:
 
-################################################
-# GLOBALS
-################################################
-
 globals:
-  - id: test_status
-    type: std::string
-    restore_value: no
-    initial_value: '"NONE"'
-
   - id: brightness_factor
     type: float
     restore_value: yes
@@ -52,10 +44,6 @@ globals:
     type: uint32_t
     restore_value: no
     initial_value: '0'
-
-################################################
-# BRIGHTNESS CONTROL
-################################################
 
 number:
   - platform: template
@@ -69,25 +57,26 @@ number:
       - lambda: |-
           id(brightness_factor) = x / 100.0;
 
-################################################
-# TRACK STATUS FROM HOME ASSISTANT
-################################################
-
 text_sensor:
   - platform: homeassistant
     id: track_status
-    entity_id: #Set the F1 Sensor track status entity here.#
+    entity_id: sensor.f1_session_track_status
 
-################################################
-# TEST BUTTONS
-################################################
+    on_value:
+      then:
+        - lambda: |-
+            id(ha_last_update) = millis();
+        - light.turn_on:
+            id: f1_panel
+            effect: F1_TRACK_STATUS
 
 button:
 
   - platform: template
     name: "F1 Test CLEAR"
     on_press:
-      - lambda: 'id(test_status)="CLEAR";'
+      - lambda: |-
+          id(track_status).publish_state("CLEAR");
       - light.turn_on:
           id: f1_panel
           effect: F1_TRACK_STATUS
@@ -95,7 +84,8 @@ button:
   - platform: template
     name: "F1 Test YELLOW"
     on_press:
-      - lambda: 'id(test_status)="YELLOW";'
+      - lambda: |-
+          id(track_status).publish_state("YELLOW");
       - light.turn_on:
           id: f1_panel
           effect: F1_TRACK_STATUS
@@ -103,7 +93,8 @@ button:
   - platform: template
     name: "F1 Test RED"
     on_press:
-      - lambda: 'id(test_status)="RED";'
+      - lambda: |-
+          id(track_status).publish_state("RED");
       - light.turn_on:
           id: f1_panel
           effect: F1_TRACK_STATUS
@@ -111,7 +102,8 @@ button:
   - platform: template
     name: "F1 Test SC"
     on_press:
-      - lambda: 'id(test_status)="SC";'
+      - lambda: |-
+          id(track_status).publish_state("SC");
       - light.turn_on:
           id: f1_panel
           effect: F1_TRACK_STATUS
@@ -119,7 +111,8 @@ button:
   - platform: template
     name: "F1 Test VSC"
     on_press:
-      - lambda: 'id(test_status)="VSC";'
+      - lambda: |-
+          id(track_status).publish_state("VSC");
       - light.turn_on:
           id: f1_panel
           effect: F1_TRACK_STATUS
@@ -127,30 +120,21 @@ button:
   - platform: template
     name: "F1 Test OFF"
     on_press:
-      - lambda: 'id(test_status)="NONE";'
       - light.turn_off: f1_panel
-
-################################################
-# LED PANEL
-################################################
 
 light:
   - platform: neopixelbus
     id: f1_panel
+    name: "F1 Marshal Panel"
     type: GRB
     variant: ws2812x
     pin: GPIO02
     num_leds: 64
-    name: "F1 Panel"
 
     restore_mode: ALWAYS_OFF
     default_transition_length: 0s
 
     effects:
-
-      ################################################
-      # BOOT ANIMATION
-      ################################################
 
       - addressable_lambda:
           name: BOOT_ANIMATION
@@ -173,21 +157,8 @@ light:
 
             else if(frame < 20){
 
-              bool S[5][3]={
-                {1,1,1},
-                {1,0,0},
-                {1,1,1},
-                {0,0,1},
-                {1,1,1}
-              };
-
-              bool C[5][3]={
-                {1,1,1},
-                {1,0,0},
-                {1,0,0},
-                {1,0,0},
-                {1,1,1}
-              };
+              bool S[5][3]={{1,1,1},{1,0,0},{1,1,1},{0,0,1},{1,1,1}};
+              bool C[5][3]={{1,1,1},{1,0,0},{1,0,0},{1,0,0},{1,1,1}};
 
               for(int x=0;x<3;x++)
                 for(int y=0;y<5;y++)
@@ -210,10 +181,6 @@ light:
 
             frame++;
 
-      ################################################
-      # MAIN TRACK STATUS EFFECT
-      ################################################
-
       - addressable_lambda:
           name: F1_TRACK_STATUS
           update_interval: 40ms
@@ -227,7 +194,6 @@ light:
 
             static int frame = 0;
             static uint32_t clear_start = 0;
-            static std::string last_status="NONE";
             static std::string active_status="NONE";
 
             float brightness = id(brightness_factor);
@@ -237,12 +203,7 @@ light:
             Color green = Color(0,255*brightness,0);
             Color white = Color(255*brightness,255*brightness,255*brightness);
 
-            std::string status;
-
-            if(id(test_status)!="NONE")
-              status=id(test_status);
-            else
-              status=id(track_status).state;
+            std::string status = id(track_status).state;
 
             if(status!="unknown" && status!="unavailable"){
               active_status=status;
@@ -258,58 +219,41 @@ light:
 
             it.all() = Color(0,0,0);
 
-            // CLEAR
-
             if(status=="CLEAR"){
-
-              if(last_status!="CLEAR")
+              if(clear_start==0)
                 clear_start=millis();
 
               if(millis()-clear_start > 10000)
                 return;
 
               it.all()=green;
-
-              last_status="CLEAR";
               return;
             }
 
-            // YELLOW
-
             if(status=="YELLOW"){
-
               for(int x=0;x<8;x++)
                 for(int y=0;y<8;y++)
                   if((x+y+frame)%4<2)
                     it[XY(x,y)] = amber;
 
               frame++;
-              last_status=status;
               return;
             }
 
-            // RED
-
             if(status=="RED"){
-
               if(frame%20<3 || (frame%20>6 && frame%20<9))
                 it.all() = red;
 
               frame++;
-              last_status=status;
               return;
             }
 
-            // SC
-
             if(status=="SC"){
 
-              int border[28][2]={
-                {0,0},{1,0},{2,0},{3,0},{4,0},{5,0},{6,0},{7,0},
-                {7,1},{7,2},{7,3},{7,4},{7,5},{7,6},
-                {7,7},{6,7},{5,7},{4,7},{3,7},{2,7},{1,7},{0,7},
-                {0,6},{0,5},{0,4},{0,3},{0,2},{0,1}
-              };
+              int border[28][2]={{0,0},{1,0},{2,0},{3,0},{4,0},{5,0},{6,0},{7,0},
+              {7,1},{7,2},{7,3},{7,4},{7,5},{7,6},
+              {7,7},{6,7},{5,7},{4,7},{3,7},{2,7},{1,7},{0,7},
+              {0,6},{0,5},{0,4},{0,3},{0,2},{0,1}};
 
               int head1 = frame % 28;
               int head2 = (head1 + 14) % 28;
@@ -333,21 +277,8 @@ light:
                 it[XY(border[idx2][0],border[idx2][1])] = c;
               }
 
-              bool S[5][3]={
-                {1,1,1},
-                {1,0,0},
-                {1,1,1},
-                {0,0,1},
-                {1,1,1}
-              };
-
-              bool C[5][3]={
-                {1,1,1},
-                {1,0,0},
-                {1,0,0},
-                {1,0,0},
-                {1,1,1}
-              };
+              bool S[5][3]={{1,1,1},{1,0,0},{1,1,1},{0,0,1},{1,1,1}};
+              bool C[5][3]={{1,1,1},{1,0,0},{1,0,0},{1,0,0},{1,1,1}};
 
               for(int x=0;x<3;x++)
                 for(int y=0;y<5;y++)
@@ -360,11 +291,8 @@ light:
                     it[XY(x+4,y+1)] = white;
 
               frame++;
-              last_status=status;
               return;
             }
-
-            // VSC
 
             if(status=="VSC"){
 
@@ -382,13 +310,7 @@ light:
 
               if(show_v){
 
-                bool V[5][5]={
-                  {1,0,0,0,1},
-                  {1,0,0,0,1},
-                  {0,1,0,1,0},
-                  {0,1,0,1,0},
-                  {0,0,1,0,0}
-                };
+                bool V[5][5]={{1,0,0,0,1},{1,0,0,0,1},{0,1,0,1,0},{0,1,0,1,0},{0,0,1,0,0}};
 
                 for(int x=0;x<5;x++)
                   for(int y=0;y<5;y++)
@@ -397,21 +319,8 @@ light:
 
               } else {
 
-                bool S[5][3]={
-                  {1,1,1},
-                  {1,0,0},
-                  {1,1,1},
-                  {0,0,1},
-                  {1,1,1}
-                };
-
-                bool C[5][3]={
-                  {1,1,1},
-                  {1,0,0},
-                  {1,0,0},
-                  {1,0,0},
-                  {1,1,1}
-                };
+                bool S[5][3]={{1,1,1},{1,0,0},{1,1,1},{0,0,1},{1,1,1}};
+                bool C[5][3]={{1,1,1},{1,0,0},{1,0,0},{1,0,0},{1,1,1}};
 
                 for(int x=0;x<3;x++)
                   for(int y=0;y<5;y++)
@@ -425,6 +334,5 @@ light:
               }
 
               frame++;
-              last_status=status;
               return;
             }
